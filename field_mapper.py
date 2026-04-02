@@ -12,6 +12,23 @@ FIELD_MAP = [
     (["full.name", "fullname", "your.name", "applicant.name", "name"], "name.full"),
     (["email", "e-mail", "email.address"], "email"),
     (["phone", "telephone", "mobile", "cell", "contact.number", "phone.number"], "phone"),
+    (
+        [
+            "location",
+            "current.location",
+            "based",
+            "located",
+            "residence",
+            "residing",
+            "where.do.you.live",
+            "mailing.city",
+        ],
+        "location.full",
+    ),
+    (["city", "hometown", "municipality", "town"], "location.city"),
+    (["state", "province", "region"], "location.state"),
+    (["zip", "postal", "postcode", "zipcode"], "location.zip"),
+    (["country", "nation"], "location.country"),
     (["linkedin", "linkedin.url", "linkedin.profile"], "linkedin"),
     (["github", "github.url", "github.profile"], "github"),
     (["summary", "objective", "about", "profile", "cover", "bio"], "summary"),
@@ -23,6 +40,24 @@ FIELD_MAP = [
 
 def _normalize(text: str) -> str:
     return re.sub(r"[^a-z0-9]", ".", text.lower().strip())
+
+
+def _keyword_matches(token: str, kw: str) -> bool:
+    """Match form tokens to keywords without false positives (e.g. state ⊂ statement)."""
+    if not token or not kw:
+        return False
+    if kw == token:
+        return True
+    parts = token.split(".")
+    if kw in parts:
+        return True
+    if "." in kw and kw in token:
+        return True
+    if "." in kw:
+        kw_parts = kw.split(".")
+        if all(kp in parts for kp in kw_parts):
+            return True
+    return bool(re.search(rf"(^|\.){re.escape(kw)}(\.|$)", token))
 
 
 def get_resume_value(field_label: str, field_name: str, field_id: str, resume: dict) -> str | None:
@@ -37,8 +72,10 @@ def get_resume_value(field_label: str, field_name: str, field_id: str, resume: d
 
     for keywords, data_key in FIELD_MAP:
         for token in tokens:
+            if not token:
+                continue
             for kw in keywords:
-                if kw in token or token in kw:
+                if _keyword_matches(token, kw):
                     return _resolve(data_key, resume)
     return None
 

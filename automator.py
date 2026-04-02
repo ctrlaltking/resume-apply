@@ -37,6 +37,23 @@ from field_mapper import get_resume_value
 from answer_cache import load as load_cache, get_or_ask
 
 
+def normalize_job_url(url: str) -> str:
+    """Strip whitespace and fix accidental double schemes (e.g. https://https://...)."""
+    url = url.strip()
+    lower = url.lower()
+    while lower.startswith("https://https://"):
+        url = url[8:]
+        lower = url.lower()
+    while lower.startswith("http://http://"):
+        url = url[7:]
+        lower = url.lower()
+    if lower.startswith("http://https://"):
+        url = "https://" + url[7:]
+    elif lower.startswith("https://http://"):
+        url = "http://" + url[8:]
+    return url
+
+
 def make_driver() -> webdriver.Chrome:
     opts = Options()
     opts.add_argument("--start-maximized")
@@ -153,6 +170,11 @@ def process_fields(driver: webdriver.Chrome, resume: dict, cache: dict):
 
 
 def run(url: str, resume_path: str):
+    raw_url = url
+    url = normalize_job_url(url)
+    if url != raw_url.strip():
+        print(f"\n[NOTE] Normalized URL (removed duplicate scheme / whitespace).")
+
     print(f"\nParsing resume: {resume_path}")
     resume = parse_resume(resume_path)
     cache = load_cache()

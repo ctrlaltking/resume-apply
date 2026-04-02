@@ -58,6 +58,55 @@ def extract_name(text: str) -> dict:
     }
 
 
+def extract_location(text: str) -> dict:
+    """
+    City / state from header lines, e.g. 'Peoria, AZ • 310-... • email'.
+    Also picks up a US ZIP when present on the same segment.
+    """
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    out: dict = {"full": "", "city": "", "state": "", "zip": "", "country": ""}
+    if len(lines) < 2:
+        return out
+
+    city_st_zip = re.compile(
+        r"^([A-Za-z][A-Za-z\s\.\'-]{0,78}?),\s*([A-Z]{2})(?:\s+(\d{5}(?:-\d{4})?))?\s*$"
+    )
+
+    for line in lines[1:10]:
+        segments = re.split(r"\s*[•·|]\s*", line)
+        for seg in segments:
+            seg = seg.strip()
+            if not seg or "@" in seg:
+                continue
+            if re.search(r"\d{3}[-.\s]?\d{3}[-.\s]?\d{4}", seg):
+                continue
+            if re.fullmatch(r"[\d\s+().-]+", seg):
+                continue
+
+            m = city_st_zip.match(seg)
+            if m:
+                out["city"] = m.group(1).strip()
+                out["state"] = m.group(2).strip()
+                if m.group(3):
+                    out["zip"] = m.group(3).strip()
+                out["full"] = f"{out['city']}, {out['state']}"
+                if out["zip"]:
+                    out["full"] = f"{out['full']} {out['zip']}"
+                break
+        if out["full"]:
+            break
+
+        zm = re.search(r"\b(\d{5}(?:-\d{4})?)\b", line)
+        if zm and not out["zip"]:
+            out["zip"] = zm.group(1)
+
+    head = text[:2500]
+    if re.search(r"\b(USA|United States|U\.S\.A\.?)\b", head, re.IGNORECASE):
+        out["country"] = "United States"
+
+    return out
+
+
 def extract_section(text: str, headers: list[str]) -> str:
     """Extract text under a section header until the next section."""
     pattern = r"(?i)(?:^|\n)(?:" + "|".join(re.escape(h) for h in headers) + r")\s*\n(.*?)(?=\n[A-Z][A-Z\s]{3,}\n|\Z)"
@@ -79,6 +128,7 @@ def parse_resume(path: str) -> dict:
     phone = extract_phone(text)
     linkedin = extract_linkedin(text)
     github = extract_github(text)
+    location = extract_location(text)
 
     summary = extract_section(text, ["Summary", "Objective", "Profile", "About"])
     experience = extract_section(text, ["Experience", "Work Experience", "Employment"])
@@ -91,6 +141,7 @@ def parse_resume(path: str) -> dict:
         "phone": phone,
         "linkedin": linkedin,
         "github": github,
+        "location": location,
         "summary": summary,
         "experience_raw": experience,
         "education_raw": education,
